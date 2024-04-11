@@ -1,4 +1,5 @@
 const mysql = require('mysql');
+const util = require('util');
 const xml2js = require('xml2js');
 const winston = require('winston');
 
@@ -20,60 +21,34 @@ const connection = mysql.createConnection({
   database: 'your_database'
 });
 
-connection.connect(err => {
-  if (err) {
-    logger.error('Connection to database failed: ' + err.stack);
-    return;
-  }
-  logger.info('Connected to database.');
-});
+// Promisify the query function
+connection.query = util.promisify(connection.query).bind(connection);
 
-// Select all vCards
-connection.query('SELECT username, vcard FROM vcard', (err, results) => {
-  if (err) {
-    logger.error('Failed to query vCards: ' + err);
-    return;
-  }
+(async () => {
+  try {
+    await connection.connect();
 
-  results.forEach(row => {
-    const username = row.username; // Use username instead of id
-    const vcardXML = row.vcard;
-    if (vcardXML) {
-      xml2js.parseString(vcardXML, (err, result) => {
-        if (err) {
-          logger.warning(`Failed to parse XML for vCard USERNAME: ${username}`);
-          return;
-        }
-
-        // Check for DESC element
-        if (!result.vCard.DESC) {
-          result.vCard.DESC = ["chat"];
-          const builder = new xml2js.Builder();
-          const updatedVcardXML = builder.buildObject(result);
-
-          // Update the vCard in the database
-          connection.query('UPDATE vcard SET vcard = ? WHERE username = ?', [updatedVcardXML, username], err => {
-            if (err) {
-              logger.error(`Failed to update vCard USERNAME: ${username}: ` + err);
-              return;
-            }
-            logger.info(`Updated vCard USERNAME: ${username} with <DESC>chat</DESC>`);
-          });
+    const results = await connection.query('SELECT username, vcard FROM vcard');
+    for (let row of results) {
+      let { username, vcard: vcardXML } = row;
+      if (vcardXML) {
+        let parsed = await util.promisify(xml2js.parseString)(vcardXML);
+        if (!parsed.vCard.DESC) {
+          parsed.vCard.DESC = ["chat"];
+          let builder = new xml2js.Builder();
+          let updatedVcardXML = builder.buildObject(parsed);
+          await connection.query('UPDATE vcard SET vcard = ? WHERE username = ?', [updatedVcardXML, username]);
+          logger.info(`Updated vCard USERNAME: ${username} with <DESC>chat</DESC>`);
         } else {
           logger.debug(`vCard USERNAME: ${username} already has <DESC> element`);
         }
-      });
-    } else {
-      logger.debug(`vCard USERNAME: ${username} is NULL, skipping...`);
+      } else {
+        logger.debug(`vCard USERNAME: ${username} is NULL, skipping...`);
+      }
     }
-  });
-});
-
-// Close the connection
-connection.end(err => {
-  if (err) {
-    logger.error('Error closing the database connection: ' + err);
-    return;
+  } catch (err) {
+    logger.error('An error occurred: ' + err.message);
+  } finally {
+    connection.end();
   }
-  logger.info('Database connection closed.');
-});
+})();

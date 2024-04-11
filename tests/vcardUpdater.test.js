@@ -4,6 +4,7 @@ const { parseString, Builder } = require('xml2js');
 describe('vCard XML Parsing and Modification', () => {
   test('adds <DESC>chat</DESC> if missing', done => {
     const inputXML = '<vCard><N><GIVEN>John</GIVEN><FAMILY>Doe</FAMILY></N></vCard>';
+    const expectedXMLStart = '<vCard><N><GIVEN>John</GIVEN><FAMILY>Doe</FAMILY></N><DESC>chat</DESC>';
 
     parseString(inputXML, (err, result) => {
       if (err) {
@@ -17,15 +18,8 @@ describe('vCard XML Parsing and Modification', () => {
       const builder = new Builder();
       const updatedVcardXML = builder.buildObject(result);
 
-      // Parse the updated XML to verify the DESC element was added correctly
-      parseString(updatedVcardXML, (err, updatedResult) => {
-        if (err) {
-          done(err);
-          return;
-        }
-        expect(updatedResult.vCard.DESC).toEqual(["chat"]);
-        done();
-      });
+      expect(updatedVcardXML).toContain(expectedXMLStart);
+      done();
     });
   });
 });
