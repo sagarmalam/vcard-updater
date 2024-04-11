@@ -35,8 +35,13 @@ connection.query = util.promisify(connection.query).bind(connection);
         let parsed = await util.promisify(xml2js.parseString)(vcardXML);
         if (!parsed.vCard.DESC) {
           parsed.vCard.DESC = ["chat"];
-          let builder = new xml2js.Builder();
+          const builder = new xml2js.Builder({
+            xmldec: null,  // Removing XML declaration
+            renderOpts: { 'pretty': false } // Keeping output compact
+          });
           let updatedVcardXML = builder.buildObject(parsed);
+          // Manually remove any remaining XML declaration if needed
+          updatedVcardXML = updatedVcardXML.replace(/^<\?xml.*\?>/, '');
           await connection.query('UPDATE vcard SET vcard = ? WHERE username = ?', [updatedVcardXML, username]);
           logger.info(`Updated vCard USERNAME: ${username} with <DESC>chat</DESC>`);
         } else {
